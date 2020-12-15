@@ -3,7 +3,7 @@
 
 %% s^2_t = w+ae^2_{t-1}+b*s^2_{t-1} aka GARCH(1,1)
 %T = 20;
-T = 1e3;
+T = 500;
 t = (1:T).';
 w = 0.15;
 a = 0.1;
@@ -47,7 +47,7 @@ clear z2t e2t Zt a b s21 w
 %mean(s2t(:,3))
 %% check MATLAB garch estimate
 %Mdl = garch(1,1);
-T = 1e3;
+%T = 1e3;
 % Mdl = garch('Constant',0.0001,'GARCH',0.5,'ARCH',0.2);
 % [v,y] = simulate(Mdl,T);
 %The output v contains simulated conditional variances. y is a column vector of simulated responses (innovations).
@@ -65,14 +65,21 @@ el_MW = logL+T*log(2*pi)/2;
 [omega, ar, ma] = initGARCH(et,1,1);
 beta = ma;
 alpha = ar-ma;
-%% Using V4
-N = 5000;%1250*8;%8750
-stepSize = 5e-5;
-% e2t = et.^2;
+aa = zeros(2,1);
+if omega<0
+    omega = 0.05;
+    aa(1) = 1;
+end
 
-% 
-% N = 100; %change this for better results
-% stepSize = 1e-3; %change this for better results
+if sum(alpha+beta)>1 || any([alpha beta])<0
+    alpha = 0.09;
+    beta = 0.9;
+    aa(2)=1;
+end
+
+%% Using V4
+N = 20000;%1250*8;%8750
+stepSize = 5e-5;
 theta = NaN(4,N+1);
 theta(:,1) = [omega; alpha; beta; var(et)];
 %theta(:,1) = theta(:,end);
@@ -90,6 +97,30 @@ for ii = 1:N
 end
 
 [g,el,~] = GARCH11_grad_V4(theta(:,end),et);
+Grad(:,end) = g;
+magG(end) = sqrt(g'*g);
+EL(end) = el;
+toc
+%% Using V5
+N = 1000;%1250*8;%8750
+stepSize = 5e-5;
+theta = NaN(4,N+1);
+theta(:,1) = [omega; alpha; beta; var(et)];
+%theta(:,1) = theta(:,end);
+Grad = NaN(4,N+1);
+magG = NaN(N+1,1);
+EL = NaN(N+1,1);
+I4 = eye(4);
+tic
+for ii = 1:N
+    [g,el,~,H] = GARCH11_grad_V5(theta(:,ii),et);
+    theta(:,ii+1) = theta(:,ii)+stepSize*(I4+H/2)*g/sqrt(g'*g);
+    Grad(:,ii) = g;
+    magG(ii) = sqrt(g'*g);
+    EL(ii) = el;
+end
+
+[g,el,~,H] = GARCH11_grad_V5(theta(:,end),et);
 Grad(:,end) = g;
 magG(end) = sqrt(g'*g);
 EL(end) = el;
@@ -139,3 +170,19 @@ title('log(|g|)')
 hold on
 scatter(ind,log(magG(ind)),'*')
 end
+
+%%
+r = roots([1 randi(10,1,2)])
+sum(r.^(1:4))
+
+%%
+x = (0.5:0.001:2).';
+y = log(x)+1./x;
+
+n = 0:3;
+c = factorial(n).*(-1).^n;
+c = c+[0 c(1:end-1)];
+
+s = sum((c./factorial(n)).*(x-1).^n,2);
+
+plot(x,[y s])
